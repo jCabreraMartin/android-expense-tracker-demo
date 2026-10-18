@@ -1,59 +1,47 @@
 # Android Expense Tracker Demo
 
-A compact Android expense-tracking application built as a portfolio project. It presents recent movements, monthly and yearly summaries, category breakdowns, and simple forms for adding movements and categories.
+Android portfolio application built with Kotlin, Jetpack Compose, Material 3 and Room. The interface is in Spanish and amounts are formatted in euros.
 
-The interface is currently in Spanish and formats amounts as euros.
+## Features
 
-## Highlights
+- Create, edit and delete income and expense movements.
+- Numeric amount input, calendar date selection and optional notes.
+- Block/category selection and category management (create, edit, archive).
+- Recent movements, monthly filtering and expandable month groups.
+- Monthly and annual summaries, annual balances for Casa, Piso and Otros, and expense breakdowns with transaction details.
+- Export and restore JSON backups using Android's file picker.
+- Optional automatic Dropbox backups using OAuth with PKCE.
 
-- Dashboard with the current month's income, expenses, and balance
-- Recent income and expense movements
-- Monthly and yearly financial summaries
-- Expense totals grouped by category
-- Forms for adding movements and custom categories
-- Local persistence with a preloaded demonstration dataset
+## Architecture
 
-## Technology and architecture
+Single-module Android application with lifecycle-aware Compose state, a ViewModel, repository, Room DAOs and coroutine flows. Cloud operations sit behind `CloudSyncProvider`; `SyncManager` coordinates backups independently of the UI.
 
-- Kotlin and Coroutines
-- Jetpack Compose with Material 3
-- Android Architecture Components (`ViewModel` and lifecycle-aware state collection)
-- Room for local persistence, with KSP schema generation
-- Repository-based data access and reactive `Flow` state
-- Gradle Kotlin DSL
+## Privacy and fictional data
 
-The app uses a single Android application module. `MainViewModel` combines repository flows into immutable UI state, while Room entities and DAOs provide the local data layer.
+All bundled accounts and movements are synthetic demonstration data. No personal financial records, account credentials, private repository history or developer-specific Dropbox key are included. Application ID `com.josem.expensetrackerdemo` allows a separate installation with its own local database.
 
-## Privacy and demo data
+Sample transactions use fixed dates in August 2026. The dashboard shows the current calendar month, so it may initially show zero; select August to explore the sample movements. Annual summaries show the current calendar year.
 
-This public edition contains only a small, wholly fictional sample dataset created for demonstration purposes. Account names, categories, amounts, dates, notes, and import identifiers are synthetic and do not describe a real person or real transactions. Any screenshots published for this project should likewise use only fictional data.
+## Build
 
-The Room schema under `app/schemas` documents the database structure and contains no transaction records.
-
-## Build and run
-
-Requirements:
-
-- Android Studio with JDK 17
-- Android SDK 35
-- An emulator or device running Android 8.0 (API 26) or newer
-
-Clone the repository, open its root directory in Android Studio, allow Gradle sync to finish, and run the `app` configuration. From a terminal on Windows, a debug build can also be created with:
+Use Android Studio with JDK 21, Android SDK 35 and Android 8.0/API 26 or newer. Java/Kotlin bytecode targets Java 17.
 
 ```powershell
-.\gradlew.bat assembleDebug
+.\gradlew.bat assembleDebug lintDebug
 ```
-
-On macOS or Linux:
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleDebug lintDebug
 ```
 
-## Screenshots
+## Optional Dropbox configuration
 
-Screenshots will be added here. All screenshots for this public demo will contain fictional sample data only.
+The app works locally without Dropbox. Create your own Dropbox API app with Scoped access and App folder access; enable `files.content.read` and `files.content.write`. Set its public App key as the `DROPBOX_APP_KEY` Gradle property in your user-level `~/.gradle/gradle.properties`, or build with `-PDROPBOX_APP_KEY=YOUR_APP_KEY`. Never commit an App secret or access/refresh token.
 
-## Project status
+Connect from Settings and authorize your own Dropbox account. Pending local changes are uploaded on manual synchronization or when the app goes to the background. Opening or synchronizing without pending local changes restores the remote snapshot. The initial connection uploads the local snapshot.
 
-This is a focused portfolio demo rather than a production financial product. Data is stored locally on the device, and the project does not provide cloud synchronization or financial-institution integrations.
+This is a single-device snapshot backup strategy. A remote restore replaces the local dataset; pending local changes take precedence on upload. Android can stop background work, so use manual synchronization for confirmation. JSON backups contain unencrypted data: choose a trusted destination. Manual export/import works without Dropbox configuration.
+
+## Validation
+
+Build checks: `assembleDebug` and `lintDebug`. No automated unit or device test suite is bundled. OAuth requires your own Dropbox app and account; the default build disables Connect until configured.

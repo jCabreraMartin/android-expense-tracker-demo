@@ -56,6 +56,7 @@ data class MovementEntity(
 
 data class MovementRow(
     val id: Long,
+    val categoryId: Long,
     val type: MovementType,
     val amountCents: Long,
     val dateEpochDay: Long,
