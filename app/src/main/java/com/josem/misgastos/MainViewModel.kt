@@ -1,5 +1,6 @@
 package com.josem.misgastos
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -9,6 +10,8 @@ import com.josem.misgastos.data.GastosRepository
 import com.josem.misgastos.data.MonthlySummary
 import com.josem.misgastos.data.MovementRow
 import com.josem.misgastos.data.MovementType
+import com.josem.misgastos.sync.SyncManager
+import com.josem.misgastos.sync.SyncStatus
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
@@ -26,10 +29,23 @@ data class HomeState(
     val currentMonth: MonthlySummary = MonthlySummary(LocalDate.now().year, LocalDate.now().monthValue, 0, 0),
     val currentYearIncomeCents: Long = 0,
     val currentYearExpenseCents: Long = 0,
+    val currentYearByBlock: List<BlockSummary> = emptyList(),
     val expensesByCategory: List<Pair<String, Long>> = emptyList(),
 )
 
-class MainViewModel(private val repository: GastosRepository) : ViewModel() {
+data class BlockSummary(
+    val block: String,
+    val incomeCents: Long,
+    val expenseCents: Long,
+) {
+    val balanceCents: Long get() = incomeCents - expenseCents
+}
+
+class MainViewModel(
+    private val repository: GastosRepository,
+    private val syncManager: SyncManager,
+) : ViewModel() {
+    val syncStatus: StateFlow<SyncStatus> = syncManager.status
     val state: StateFlow<HomeState> = combine(
         repository.movements,
         repository.categories,
@@ -54,6 +70,14 @@ class MainViewModel(private val repository: GastosRepository) : ViewModel() {
             ),
             currentYearIncomeCents = yearRows.filter { it.type == MovementType.INCOME }.sumOf { it.amountCents },
             currentYearExpenseCents = yearExpenses.sumOf { it.amountCents },
+            currentYearByBlock = listOf("Casa", "Piso", "Otros").map { block ->
+                val blockRows = yearRows.filter { it.block.equals(block, ignoreCase = true) }
+                BlockSummary(
+                    block = block,
+                    incomeCents = blockRows.filter { it.type == MovementType.INCOME }.sumOf { it.amountCents },
+                    expenseCents = blockRows.filter { it.type == MovementType.EXPENSE }.sumOf { it.amountCents },
+                )
+            },
             expensesByCategory = yearExpenses
                 .groupBy { it.categoryName }
                 .map { (name, rows) -> name to rows.sumOf { it.amountCents } }
@@ -81,9 +105,48 @@ class MainViewModel(private val repository: GastosRepository) : ViewModel() {
         }
     }
 
+    fun updateMovement(
+        id: Long,
+        amountText: String,
+        date: LocalDate,
+        type: MovementType,
+        categoryId: Long,
+        notes: String,
+        onResult: (Boolean) -> Unit,
+    ) {
+        val cents = amountText.replace(',', '.').toBigDecimalOrNull()
+            ?.multiply(BigDecimal(100))
+            ?.setScale(0, RoundingMode.HALF_UP)
+            ?.longValueExact()
+        if (cents == null || cents <= 0) return onResult(false)
+        viewModelScope.launch {
+            repository.updateMovement(id, type, cents, date, categoryId, notes)
+            onResult(true)
+        }
+    }
+
+    fun deleteMovement(id: Long) {
+        viewModelScope.launch { repository.deleteMovement(id) }
+    }
+
+    fun connectDropbox(context: Context) = syncManager.connect(context)
+
+    fun syncNow() {
+        viewModelScope.launch { syncManager.syncNow() }
+    }
+
     fun addCategory(name: String, block: String, type: MovementType) {
         if (name.isBlank() || block.isBlank()) return
         viewModelScope.launch { repository.addCategory(name, block, type) }
+    }
+
+    fun updateCategory(id: Long, name: String, block: String, type: MovementType) {
+        if (name.isBlank() || block.isBlank()) return
+        viewModelScope.launch { repository.updateCategory(id, name, block, type) }
+    }
+
+    fun deleteCategory(id: Long) {
+        viewModelScope.launch { repository.deleteCategory(id) }
     }
 
     fun addAccount(name: String) {
@@ -91,8 +154,19 @@ class MainViewModel(private val repository: GastosRepository) : ViewModel() {
         viewModelScope.launch { repository.addAccount(name) }
     }
 
-    class Factory(private val repository: GastosRepository) : ViewModelProvider.Factory {
+    fun createBackup(onResult: (Result<String>) -> Unit) {
+        viewModelScope.launch { onResult(runCatching { repository.createBackup() }) }
+    }
+
+    fun restoreBackup(text: String, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch { onResult(runCatching { repository.restoreBackup(text) }) }
+    }
+
+    class Factory(
+        private val repository: GastosRepository,
+        private val syncManager: SyncManager,
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T = MainViewModel(repository) as T
+        override fun <T : ViewModel> create(modelClass: Class<T>): T = MainViewModel(repository, syncManager) as T
     }
 }
